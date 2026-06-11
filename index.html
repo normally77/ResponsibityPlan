@@ -3,19 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ระบบจัดสรรหน้าที่แบบลากวาง</title>
+    <title>ระบบจัดสรรหน้าที่แบบลากวาง + ระบบแชร์ลิงก์ออนไลน์</title>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .ghost { background-color: #dbeafe !important; border: 2px dashed #3b82f6 !important; opacity: 0.5; }
+        .preset-active { background-color: #4f46e5 !important; color: white !important; font-weight: bold; border-color: #4f46e5 !important; }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen p-4 md:p-6 font-sans">
 
     <div class="max-w-6xl mx-auto">
-        <h1 class="text-2xl md:text-3xl font-bold mb-2 text-slate-800">เครื่องมือจัดสรรหน้าที่ (Drag & Drop)</h1>
-        <p class="text-gray-500 mb-6 text-sm">💡 **วิธีใช้งาน:** ใช้เมาส์คลิกค้างที่การ์ดหน้าที่สีเหลือง แล้วลากย้ายไปปล่อยในกล่องของคนอื่นๆ เพื่อรวมหน้าที่ได้เลย!</p>
+        <h1 class="text-2xl md:text-3xl font-bold mb-2 text-slate-800">ระบบจัดสรรหน้าที่แบบลากวาง (Drag & Drop)</h1>
+        <p class="text-gray-500 mb-6 text-sm">💡 **วิธีใช้งาน:** จัดสรรงานตามต้องการ จากนั้นกดปุ่ม "คัดลอกลิงก์แผนงานนี้" เพื่อบันทึกหรือส่งต่อให้คนอื่นเปิดดูได้จากทุกที่!</p>
         
+        <div class="p-4 bg-indigo-50 rounded-lg border border-indigo-200 shadow-sm mb-6">
+            <div class="flex flex-col gap-4">
+                <div>
+                    <h2 class="font-semibold text-indigo-800 mb-2 text-sm">📋 เลือกแผนการ (Preset) ที่ต้องการจัดงาน</h2>
+                    <div class="flex gap-2 max-w-md">
+                        <button id="btn-preset1" onclick="switchPreset('preset1')" class="flex-1 py-1.5 px-3 bg-white text-slate-700 text-xs rounded-md border hover:bg-slate-100 transition-all shadow-xs">แผนการที่ 1</button>
+                        <button id="btn-preset2" onclick="switchPreset('preset2')" class="flex-1 py-1.5 px-3 bg-white text-slate-700 text-xs rounded-md border hover:bg-slate-100 transition-all shadow-xs">แผนการที่ 2</button>
+                        <button id="btn-preset3" onclick="switchPreset('preset3')" class="flex-1 py-1.5 px-3 bg-white text-slate-700 text-xs rounded-md border hover:bg-slate-100 transition-all shadow-xs">แผนการที่ 3</button>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center border-t border-indigo-100 pt-3">
+                    <button onclick="generateShareLink()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-2">
+                        🔗 คัดลอกลิงก์แผนงานนี้ (Save / Share ทั้ง 3 Presets)
+                    </button>
+                    <div class="flex-1 flex items-center gap-2 bg-white border rounded-lg px-3 py-2 text-xs text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap">
+                        <span class="font-bold text-indigo-600 shrink-0">ลิงก์ปัจจุบันของคุณ:</span>
+                        <span id="currentUrlDisplay" class="italic select-all">กำลังโหลด...</span>
+                    </div>
+                </div>
+            </div>
+            <p id="shareStatus" class="text-xs text-emerald-600 mt-2 font-bold h-4"></p>
+        </div>
+
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
             <div class="p-4 bg-blue-50 rounded-lg border border-blue-200 shadow-sm">
                 <h2 class="font-semibold text-blue-800 mb-2">👤 เพิ่มรายชื่อคน</h2>
@@ -39,39 +64,120 @@
     </div>
 
     <script>
-        // ข้อมูลเริ่มต้น
-        let people = [
+        // ข้อมูลตั้งต้นมาตรฐาน (ห้ามหาย)
+        const defaultPeople = [
             { id: 'p1', name: 'สมชาย (Developer)' },
             { id: 'p2', name: 'สมหญิง (Marketing)' },
             { id: 'unassigned', name: '📥 ยังไม่ได้มอบหมาย' }
         ];
 
-        let roles = [
+        const defaultRoles = [
             { id: 'r1', title: 'เขียนโค้ด Frontend', personId: 'p1' },
             { id: 'r2', title: 'ยิงแอดโฆษณา Facebook', personId: 'p2' },
             { id: 'r3', title: 'ออกแบบกราฟิก', personId: 'p1' },
             { id: 'r4', title: 'เขียนบทความ Content', personId: 'unassigned' }
         ];
 
-        // ฟังก์ชันวาดหน้าจอใหม่ทุกครั้งที่มีการเปลี่ยนแปลง
+        let people = [];
+        let roles = [];
+        let allPresets = {};
+        let currentPresetKey = 'preset1'; 
+
+        // ฟังก์ชันโหลดข้อมูล และตรวจจับค่าว่างเพื่อดึงช่องกลับมา
+        function loadDataFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const dataParam = urlParams.get('data');
+            
+            if (dataParam) {
+                try {
+                    allPresets = JSON.parse(decodeURIComponent(atob(dataParam)));
+                    
+                    // ป้องกันขั้นสุด: ถ้าเปิดลิงก์มาแล้วพบว่าวัตถุภายในโล่ง ให้รีเซ็ตกลับเป็นค่าเริ่มต้นทันที
+                    if (!allPresets.preset1 || allPresets.preset1.people.length === 0) {
+                        loadDefaultPresets();
+                    }
+                } catch (e) {
+                    console.error("การโหลดข้อมูลจากลิงก์ผิดพลาด:", e);
+                    loadDefaultPresets();
+                }
+            } else {
+                loadDefaultPresets();
+            }
+            document.getElementById('currentUrlDisplay').innerText = window.location.href;
+            loadPresetToBoard(currentPresetKey);
+        }
+
+        function loadDefaultPresets() {
+            allPresets = {
+                preset1: { people: JSON.parse(JSON.stringify(defaultPeople)), roles: JSON.parse(JSON.stringify(defaultRoles)) },
+                preset2: { people: JSON.parse(JSON.stringify(defaultPeople)), roles: JSON.parse(JSON.stringify(defaultRoles)) },
+                preset3: { people: JSON.parse(JSON.stringify(defaultPeople)), roles: JSON.parse(JSON.stringify(defaultRoles)) }
+            };
+        }
+
+        function switchPreset(presetKey) {
+            // เซฟงานปัจจุบันเก็บเข้าถังก่อนสลับหน้า
+            allPresets[currentPresetKey] = {
+                people: JSON.parse(JSON.stringify(people)),
+                roles: JSON.parse(JSON.stringify(roles))
+            };
+
+            currentPresetKey = presetKey;
+            loadPresetToBoard(presetKey);
+        }
+
+        function loadPresetToBoard(presetKey) {
+            // ดึงข้อมูลมากาง และตรวจสอบว่ามีช่อง "ยังไม่ได้มอบหมาย" หรือไม่ ถ้าไม่มีให้เติมกลับเข้าท้ายตารางเสมอ
+            people = [...allPresets[presetKey].people];
+            roles = [...allPresets[presetKey].roles];
+
+            const hasUnassigned = people.some(p => p.id === 'unassigned');
+            if (!hasUnassigned) {
+                people.push({ id: 'unassigned', name: '📥 ยังไม่ได้มอบหมาย' });
+            }
+
+            // ไฮไลต์ปุ่มที่เลือก
+            document.getElementById('btn-preset1').className = `flex-1 py-1.5 px-3 bg-white text-slate-700 text-xs rounded-md border hover:bg-slate-100 transition-all shadow-xs ${presetKey === 'preset1' ? 'preset-active' : ''}`;
+            document.getElementById('btn-preset2').className = `flex-1 py-1.5 px-3 bg-white text-slate-700 text-xs rounded-md border hover:bg-slate-100 transition-all shadow-xs ${presetKey === 'preset2' ? 'preset-active' : ''}`;
+            document.getElementById('btn-preset3').className = `flex-1 py-1.5 px-3 bg-white text-slate-700 text-xs rounded-md border hover:bg-slate-100 transition-all shadow-xs ${presetKey === 'preset3' ? 'preset-active' : ''}`;
+
+            renderBoard();
+        }
+
+        function generateShareLink() {
+            allPresets[currentPresetKey] = {
+                people: JSON.parse(JSON.stringify(people)),
+                roles: JSON.parse(JSON.stringify(roles))
+            };
+
+            const base64Data = btoa(encodeURIComponent(JSON.stringify(allPresets)));
+            const newUrl = window.location.origin + window.location.pathname + '?data=' + base64Data;
+            
+            navigator.clipboard.writeText(newUrl).then(() => {
+                document.getElementById('currentUrlDisplay').innerText = newUrl;
+                const statusEl = document.getElementById('shareStatus');
+                statusEl.innerText = "📋 คัดลอกลิงก์แผนงานนี้ลงเครื่องเรียบร้อย! (เซฟรวมครบทั้ง 3 แผนการแล้ว)";
+                setTimeout(() => { statusEl.innerText = ''; }, 4000);
+            }).catch(err => {
+                alert("ไม่สามารถคัดลอกอัตโนมัติได้ กรุณาก๊อปปี้ลิงก์ในช่องสีขาวแทนครับ");
+            });
+        }
+
         function renderBoard() {
             const board = document.getElementById('board');
-            board.innerHTML = ''; // เคลียร์หน้าจอเก่า
+            board.innerHTML = ''; 
 
             people.forEach(person => {
                 const personRoles = roles.filter(role => role.personId === person.id);
                 const isUnassigned = person.id === 'unassigned';
                 
-                // สร้างกล่องของแต่ละคน
                 const personBox = document.createElement('div');
                 personBox.className = `p-4 rounded-xl border-2 shadow-sm ${isUnassigned ? 'bg-gray-100 border-dashed border-gray-400' : 'bg-white border-slate-200'}`;
                 
-                // สรรสร้างปุ่มลบคน (ถ้าไม่ใช่ช่องยังไม่ได้มอบหมาย ให้แสดงปุ่มลบคน)
                 const deletePersonBtn = !isUnassigned 
                     ? `<button onclick="deletePerson('${person.id}')" class="text-xs bg-red-50 hover:bg-red-100 text-red-500 px-2 py-1 rounded-md border border-red-200 transition-colors">❌ ลบคน</button>` 
                     : '';
 
-                // ส่วนหัวชื่อคน (เพิ่มปุ่มลบคนเข้าไปด้านขวา)
                 personBox.innerHTML = `
                     <h3 class="font-bold text-base border-b pb-2 mb-3 flex justify-between items-center text-slate-700">
                         <div class="flex items-center gap-2">
@@ -96,7 +202,6 @@
 
                 board.appendChild(personBox);
 
-                // เปิดระบบลากวางให้กับกล่องนี้
                 const listEl = document.getElementById(`list-${person.id}`);
                 new Sortable(listEl, {
                     group: 'sharedRoles',
@@ -106,29 +211,26 @@
                         const roleId = evt.item.getAttribute('data-role-id');
                         const targetPersonId = evt.to.getAttribute('data-person-id');
                         
-                        // อัปเดตข้อมูลพนักงานในระบบ
                         const role = roles.find(r => r.id === roleId);
                         if (role) role.personId = targetPersonId;
                         
-                        // วาดหน้าจอใหม่เพื่อความถูกต้องของตัวเลข
                         renderBoard();
                     }
                 });
             });
         }
 
-        // ฟังก์ชันเพิ่มคนใหม่
         function addPerson() {
             const input = document.getElementById('personInput');
             const name = input.value.trim();
             if (!name) return;
             
+            // เพิ่มคนใหม่โดยแทรกไว้ก่อนหน้าช่อง "ยังไม่ได้มอบหมาย" เสมอ
             people.splice(people.length - 1, 0, { id: 'p_' + Date.now(), name: name });
             input.value = '';
             renderBoard();
         }
 
-        // ฟังก์ชันเพิ่มหน้าที่ใหม่
         function addRole() {
             const input = document.getElementById('roleInput');
             const title = input.value.trim();
@@ -139,32 +241,26 @@
             renderBoard();
         }
 
-        // ฟังก์ชันลบคน (เพิ่มใหม่)
         function deletePerson(personId) {
             if (confirm("คุณแน่ใจใช่ไหมที่จะลบคนนี้? (หน้าที่ทั้งหมดของคนนี้จะถูกเด้งกลับไปที่ช่องยังไม่ได้มอบหมาย)")) {
-                // ย้ายหน้าที่ของคนที่จะลบ กลับไปที่ 'ยังไม่ได้มอบหมาย' ก่อน เพื่อไม่ให้งานหาย
                 roles.forEach(role => {
                     if (role.personId === personId) {
                         role.personId = 'unassigned';
                     }
                 });
-                // ลบคนออกจากรายชื่อ
                 people = people.filter(p => p.id !== personId);
                 renderBoard();
             }
         }
 
-        // ฟังก์ชันลบหน้าที่ (เพิ่มใหม่)
         function deleteRole(roleId) {
             if (confirm("คุณต้องการลบหน้าที่นี้ทิ้งใช่ไหม?")) {
-                // กรองเอาหน้าที่ตัวที่จะลบออกไป
                 roles = roles.filter(r => r.id !== roleId);
                 renderBoard();
             }
         }
 
-        // สั่งให้ระบบทำงานครั้งแรก
-        renderBoard();
+        loadDataFromUrl();
     </script>
 </body>
 </html>
