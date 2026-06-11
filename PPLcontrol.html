@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดสรรหน้าที่แบบลากวาง</title>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .ghost { background-color: #dbeafe !important; border: 2px dashed #3b82f6 !important; opacity: 0.5; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen p-4 md:p-6 font-sans">
+
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-2xl md:text-3xl font-bold mb-2 text-slate-800">ระบบจัดสรรหน้าที่แบบลากวาง (Drag & Drop)</h1>
+        <p class="text-gray-500 mb-6 text-sm">💡 **วิธีใช้งาน:** ใช้เมาส์คลิกค้างที่การ์ดหน้าที่สีเหลือง แล้วลากย้ายไปปล่อยในกล่องของคนอื่นๆ เพื่อรวมหน้าที่ได้เลย!</p>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <div class="p-4 bg-blue-50 rounded-lg border border-blue-200 shadow-sm">
+                <h2 class="font-semibold text-blue-800 mb-2">👤 เพิ่มรายชื่อคน</h2>
+                <div class="flex gap-2">
+                    <input type="text" id="personInput" placeholder="ชื่อพนักงาน..." class="flex-1 p-2 border rounded bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    <button onclick="addPerson()" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 font-medium">เพิ่ม</button>
+                </div>
+            </div>
+
+            <div class="p-4 bg-emerald-50 rounded-lg border border-emerald-200 shadow-sm">
+                <h2 class="font-semibold text-emerald-800 mb-2">📋 เพิ่มตำแหน่ง/หน้าที่</h2>
+                <div class="flex gap-2">
+                    <input type="text" id="roleInput" placeholder="ชื่อหน้าที่ เช่น ทำบัญชี, ตรวจโค้ด..." class="flex-1 p-2 border rounded bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                    <button onclick="addRole()" class="bg-emerald-600 text-white px-4 py-2 rounded text-sm hover:bg-emerald-700 font-medium">เพิ่ม</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="board" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        </div>
+    </div>
+
+    <script>
+        // ข้อมูลเริ่มต้น
+        let people = [
+            { id: 'p1', name: 'สมชาย (Developer)' },
+            { id: 'p2', name: 'สมหญิง (Marketing)' },
+            { id: 'unassigned', name: '📥 ยังไม่ได้มอบหมาย' }
+        ];
+
+        let roles = [
+            { id: 'r1', title: 'เขียนโค้ด Frontend', personId: 'p1' },
+            { id: 'r2', title: 'ยิงแอดโฆษณา Facebook', personId: 'p2' },
+            { id: 'r3', title: 'ออกแบบกราฟิก', personId: 'p1' },
+            { id: 'r4', title: 'เขียนบทความ Content', personId: 'unassigned' }
+        ];
+
+        // ฟังก์ชันวาดหน้าจอใหม่ทุกครั้งที่มีการเปลี่ยนแปลง
+        function renderBoard() {
+            const board = document.getElementById('board');
+            board.innerHTML = ''; // เคลียร์หน้าจอเก่า
+
+            people.forEach(person => {
+                const personRoles = roles.filter(role => role.personId === person.id);
+                const isUnassigned = person.id === 'unassigned';
+                
+                // สร้างกล่องของแต่ละคน
+                const personBox = document.createElement('div');
+                personBox.className = `p-4 rounded-xl border-2 shadow-sm ${isUnassigned ? 'bg-gray-100 border-dashed border-gray-400' : 'bg-white border-slate-200'}`;
+                
+                // สรรสร้างปุ่มลบคน (ถ้าไม่ใช่ช่องยังไม่ได้มอบหมาย ให้แสดงปุ่มลบคน)
+                const deletePersonBtn = !isUnassigned 
+                    ? `<button onclick="deletePerson('${person.id}')" class="text-xs bg-red-50 hover:bg-red-100 text-red-500 px-2 py-1 rounded-md border border-red-200 transition-colors">❌ ลบคน</button>` 
+                    : '';
+
+                // ส่วนหัวชื่อคน (เพิ่มปุ่มลบคนเข้าไปด้านขวา)
+                personBox.innerHTML = `
+                    <h3 class="font-bold text-base border-b pb-2 mb-3 flex justify-between items-center text-slate-700">
+                        <div class="flex items-center gap-2">
+                            <span>${person.name}</span>
+                            <span class="text-xs bg-slate-200 px-2 py-1 rounded-full text-slate-600">${personRoles.length} หน้าที่</span>
+                        </div>
+                        ${deletePersonBtn}
+                    </h3>
+                    <div id="list-${person.id}" data-person-id="${person.id}" class="space-y-2 min-h-[150px] bg-slate-50/50 p-2 rounded-lg target-list">
+                        ${personRoles.map(role => `
+                            <div data-role-id="${role.id}" class="p-3 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-lg shadow-sm cursor-grab active:cursor-grabbing flex justify-between items-center transition-colors duration-150">
+                                <span class="font-medium text-slate-800 text-sm">⚡ ${role.title}</span>
+                                <div class="flex items-center gap-2">
+                                    <button onclick="deleteRole('${role.id}')" class="text-xs text-red-500 hover:text-red-700 font-bold bg-white/60 hover:bg-white px-1.5 py-0.5 rounded border border-amber-200 shadow-xs transition-colors" title="ลบหน้าที่นี้">❌</button>
+                                    <span class="text-gray-400 text-xs pointer-events-none">☰</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                        ${personRoles.length === 0 ? `<div class="text-center text-gray-400 text-xs py-8 pointer-events-none no-fallback">ลากหน้าที่มาวางที่นี่</div>` : ''}
+                    </div>
+                `;
+
+                board.appendChild(personBox);
+
+                // เปิดระบบลากวางให้กับกล่องนี้
+                const listEl = document.getElementById(`list-${person.id}`);
+                new Sortable(listEl, {
+                    group: 'sharedRoles',
+                    animation: 150,
+                    ghostClass: 'ghost',
+                    onAdd: function (evt) {
+                        const roleId = evt.item.getAttribute('data-role-id');
+                        const targetPersonId = evt.to.getAttribute('data-person-id');
+                        
+                        // อัปเดตข้อมูลพนักงานในระบบ
+                        const role = roles.find(r => r.id === roleId);
+                        if (role) role.personId = targetPersonId;
+                        
+                        // วาดหน้าจอใหม่เพื่อความถูกต้องของตัวเลข
+                        renderBoard();
+                    }
+                });
+            });
+        }
+
+        // ฟังก์ชันเพิ่มคนใหม่
+        function addPerson() {
+            const input = document.getElementById('personInput');
+            const name = input.value.trim();
+            if (!name) return;
+            
+            people.splice(people.length - 1, 0, { id: 'p_' + Date.now(), name: name });
+            input.value = '';
+            renderBoard();
+        }
+
+        // ฟังก์ชันเพิ่มหน้าที่ใหม่
+        function addRole() {
+            const input = document.getElementById('roleInput');
+            const title = input.value.trim();
+            if (!title) return;
+
+            roles.push({ id: 'r_' + Date.now(), title: title, personId: 'unassigned' });
+            input.value = '';
+            renderBoard();
+        }
+
+        // ฟังก์ชันลบคน (เพิ่มใหม่)
+        function deletePerson(personId) {
+            if (confirm("คุณแน่ใจใช่ไหมที่จะลบคนนี้? (หน้าที่ทั้งหมดของคนนี้จะถูกเด้งกลับไปที่ช่องยังไม่ได้มอบหมาย)")) {
+                // ย้ายหน้าที่ของคนที่จะลบ กลับไปที่ 'ยังไม่ได้มอบหมาย' ก่อน เพื่อไม่ให้งานหาย
+                roles.forEach(role => {
+                    if (role.personId === personId) {
+                        role.personId = 'unassigned';
+                    }
+                });
+                // ลบคนออกจากรายชื่อ
+                people = people.filter(p => p.id !== personId);
+                renderBoard();
+            }
+        }
+
+        // ฟังก์ชันลบหน้าที่ (เพิ่มใหม่)
+        function deleteRole(roleId) {
+            if (confirm("คุณต้องการลบหน้าที่นี้ทิ้งใช่ไหม?")) {
+                // กรองเอาหน้าที่ตัวที่จะลบออกไป
+                roles = roles.filter(r => r.id !== roleId);
+                renderBoard();
+            }
+        }
+
+        // สั่งให้ระบบทำงานครั้งแรก
+        renderBoard();
+    </script>
+</body>
+</html>
